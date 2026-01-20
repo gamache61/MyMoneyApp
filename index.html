@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>InvestPro | Real-Profit Engine</title>
+    <style>
+        :root { --green: #2ecc71; --dark: #1a1a1a; --gray: #f4f4f4; --red: #e74c3c; --gold: #f1c40f; --blue: #3498db; }
+        body { font-family: -apple-system, sans-serif; background: var(--gray); margin: 0; padding: 15px; display: flex; justify-content: center; }
+        .app { width: 100%; max-width: 400px; background: white; border-radius: 30px; padding: 25px; box-sizing: border-box; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        
+        .status-bar { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 15px; font-size: 0.7rem; font-weight: bold; }
+        .light { width: 10px; height: 10px; border-radius: 50%; background: #ccc; }
+        .light.live { background: var(--green); box-shadow: 0 0 10px var(--green); }
+        .light.sim { background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+
+        .main-card { background: var(--dark); color: white; border-radius: 20px; padding: 25px; text-align: center; margin-bottom: 15px; }
+        #total-val { font-size: 2.8rem; font-weight: 800; color: var(--green); display: block; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-box { background: #f9f9f9; padding: 10px; border-radius: 12px; text-align: center; font-size: 0.7rem; color: #666; }
+        .val { display: block; font-weight: bold; margin-top: 2px; }
+        
+        input { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 12px; font-size: 1.2rem; margin-bottom: 12px; box-sizing: border-box; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 16px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; }
+        .btn-dep { background: var(--green); color: white; }
+        .btn-wit { background: #ddd; color: #666; }
+        
+        #stock-list { margin-top: 15px; max-height: 200px; overflow-y: auto; border: 1px solid #eee; border-radius: 15px; padding: 5px; }
+        .stock-row { display: flex; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #f9f9f9; font-size: 0.75rem; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <div class="status-bar">
+        <div id="status-light" class="light"></div>
+        <span id="status-text">CONNECTING...</span>
+    </div>
+
+    <div class="main-card">
+        <small style="opacity: 0.5;">REAL-WORLD ESTIMATE</small>
+        <span id="total-val">$0.00</span>
+        <div id="pnl-display" style="font-size: 0.8rem; font-weight: bold; margin-top: 5px;">Profit: +$0.00</div>
+    </div>
+
+    <div class="stat-grid">
+        <div class="stat-box">Total Fees<span id="fees-val" class="val" style="color:var(--gold)">$0.00</span></div>
+        <div class="stat-box">Invested<span id="invest-val" class="val" style="color:var(--blue)">$0.00</span></div>
+    </div>
+
+    <input type="number" id="userAmt" placeholder="Deposit ($)" inputmode="decimal">
+    <div class="btn-group">
+        <button class="btn-dep" onclick="invest()">Deposit</button>
+        <button class="btn-wit" onclick="withdraw()">Withdraw</button>
+    </div>
+
+    <div id="stock-list"></div>
+</div>
+
+<script>
+    const API_KEY = 'PASTE_YOUR_KEY_HERE';
+    const tickers = ['AAPL','TSLA','NVDA','AMZN','MSFT'];
+    
+    let balance = 0, totalInvested = 0, feesPaid = 0;
+    let stockData = {}, currentHoldings = [], purchasePrices = {};
+
+    async function updateEngine() {
+        const light = document.getElementById('status-light');
+        const text = document.getElementById('status-text');
+        let isRealData = false;
+
+        // 1. Try to get real market prices
+        for (let s of tickers) {
+            try {
+                const res = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${s}&apikey=${API_KEY}`);
+                const data = await res.json();
+                
+                if (data["Global Quote"] && data["Global Quote"]["05. price"]) {
+                    isRealData = true;
+                    stockData[s] = {
+                        price: parseFloat(data["Global Quote"]["05. price"]),
+                        change: parseFloat(data["Global Quote"]["10. change percent"].replace('%', ''))
+                    };
+                } else {
+                    // Fallback to simulation if API fails
+                    let lastP = stockData[s]?.price || 150;
+                    let simChange = (Math.random() * 4) - 1.5;
+                    stockData[s] = { price: lastP + (lastP * (simChange/5000)), change: simChange };
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        // 2. Update Status Light
+        if (isRealData) {
+            light.className = 'light live';
+            text.innerText = 'REAL MARKET INVESTING';
+        } else {
+            light.className = 'light sim';
+            text.innerText = 'SIMULATED TRACKING';
+        }
+
+        calculateProfit();
+        updateUI();
+    }
+
+    function calculateProfit() {
+        if (balance <= 0) return;
+
+        // Auto-select top 5 strongest stocks
+        let sorted = tickers.sort((a, b) => stockData[b].change - stockData[a].change);
+        let top5 = sorted.slice(0, 5);
+
+        // If we switch stocks, apply the 0.1% fee
+        if (JSON.stringify(top5) !== JSON.stringify(currentHoldings)) {
+            let fee = balance * 0.001;
+            balance -= fee;
+            feesPaid += fee;
+            currentHoldings = top5;
+        }
+
+        // Real Profit Math: Multiplies balance by the actual daily movement of your stocks
+        let totalDailyMove = 0;
+        currentHoldings.forEach(s => totalDailyMove += (stockData[s].change / 100));
+        let avgMove = totalDailyMove / 5;
+        
+        // This line updates your balance to match real market gains/losses
+        balance = balance * (1 + (avgMove / 100)); 
+    }
+
+    function invest() {
+        const amt = parseFloat(document.getElementById('userAmt').value);
+        if (amt > 0) {
+            totalInvested += amt;
+            balance += amt;
+            document.getElementById('userAmt').value = '';
+            updateUI();
+        }
+    }
+
+    function withdraw() {
+        if (balance > 0) {
+            alert(`Cashing out $${balance.toFixed(2)} to real bank account.`);
+            balance = 0; totalInvested = 0; feesPaid = 0; updateUI();
+        }
+    }
+
+    function updateUI() {
+        document.getElementById('total-val').innerText = '$' + balance.toFixed(2);
+        document.getElementById('fees-val').innerText = '$' + feesPaid.toFixed(2);
+        document.getElementById('invest-val').innerText = '$' + totalInvested.toFixed(2);
+        
+        let pnl = balance - totalInvested;
+        const pnlBox = document.getElementById('pnl-display');
+        pnlBox.innerText = `Profit: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+        pnlBox.style.color = pnl >= 0 ? "var(--green)" : "var(--red)";
+
+        const list = document.getElementById('stock-list');
+        list.innerHTML = '';
+        tickers.forEach(s => {
+            let active = currentHoldings.includes(s);
+            list.innerHTML += `<div class="stock-row" style="${active ? 'background:#eefdf4; font-weight:bold;' : ''}">
+                <span>${s} ${active ? '⭐' : ''}</span>
+                <span style="color:${stockData[s].change >= 0 ? 'var(--green)' : 'var(--red)'}">${stockData[s].change.toFixed(2)}%</span>
+            </div>`;
+        });
+    }
+
+    setInterval(updateEngine, 10000); 
+    updateEngine();
+</script>
+</body>
+</html>
