@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>InvestPro | Micro-Invest Simulator</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2454/2454282.png">
+
+    <style>
+        :root { --green: #2ecc71; --dark: #1a1a1a; --gray: #f4f4f4; }
+        body { font-family: -apple-system, sans-serif; background: var(--gray); margin: 0; display: flex; justify-content: center; }
+        .app-container { width: 100%; max-width: 400px; background: white; min-height: 100vh; padding: 20px; box-sizing: border-box; }
+        .balance-card { background: var(--dark); color: white; border-radius: 20px; padding: 40px 20px; text-align: center; margin-bottom: 25px; }
+        #balance { font-size: 3.5rem; font-weight: 800; color: var(--green); margin: 10px 0; display: block; }
+        input { width: 100%; padding: 15px; border: 2px solid #eee; border-radius: 12px; font-size: 1.2rem; margin-bottom: 15px; box-sizing: border-box; text-align: center; }
+        .btn { width: 100%; padding: 18px; border: none; border-radius: 12px; font-size: 1.1rem; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+        .btn-deposit { background: var(--green); color: white; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div style="text-align: center; padding: 10px 0;">
+        <h2 style="margin:0;">InvestPro</h2>
+        <small id="market-ticker" style="color:#888;">Market Open</small>
+    </div>
+
+    <div class="balance-card">
+        <span id="balance">$0.00</span>
+        <div style="font-size: 0.9rem; opacity: 0.8;">Total Invested</div>
+    </div>
+
+    <input type="number" id="moneyAmount" placeholder="Enter Amount" inputmode="decimal">
+    <button class="btn btn-deposit" onclick="handleDeposit()">Add Money</button>
+
+    <div id="activityLog" style="margin-top:20px; font-size: 0.8rem; color: #999;">
+        Waiting for first deposit...
+    </div>
+</div>
+
+<script>
+    let totalValue = 0;
+
+    // REGISTER SERVICE WORKER
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('SW Registered'))
+            .catch(err => console.log('SW Error: ', err));
+        });
+    }
+
+    function handleDeposit() {
+        const input = document.getElementById('moneyAmount');
+        const amount = parseFloat(input.value);
+        if (!isNaN(amount) && amount > 0) {
+            totalValue += amount;
+            document.getElementById('balance').innerText = '$' + totalValue.toFixed(2);
+            document.getElementById('activityLog').innerText = 'Last: +$' + amount.toFixed(2);
+            input.value = '';
+        }
+    }
+
+    // Market Movement (runs every 4 seconds)
+    setInterval(() => {
+        if (totalValue > 0) {
+            let movement = (Math.random() * 0.004) - 0.001; 
+            totalValue += (totalValue * movement);
+            document.getElementById('balance').innerText = '$' + totalValue.toFixed(2);
+            document.getElementById('market-ticker').innerText = movement >= 0 ? "📈 Market Up" : "📉 Market Down";
+        }
+    }, 4000);
+</script>
+
+</body>
+</html>
