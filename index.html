@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>InvestPro | Pure Growth</title>
+    <style>
+        :root { --green: #2ecc71; --dark: #1a1a1a; --gray: #f4f4f4; --red: #e74c3c; --blue: #3498db; }
+        body { font-family: -apple-system, sans-serif; background: var(--gray); margin: 0; padding: 15px; display: flex; justify-content: center; }
+        .app { width: 100%; max-width: 400px; background: white; border-radius: 30px; padding: 25px; box-sizing: border-box; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        
+        .main-card { background: var(--dark); color: white; border-radius: 20px; padding: 25px; text-align: center; margin-bottom: 15px; border: 2px solid #333; }
+        #total-val { font-size: 2.8rem; font-weight: 800; color: var(--green); display: block; }
+        #pnl-display { font-size: 0.9rem; font-weight: bold; margin-top: 8px; }
+
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-box { background: #f9f9f9; padding: 10px; border-radius: 12px; text-align: center; font-size: 0.7rem; color: #666; }
+        .val { display: block; font-weight: bold; margin-top: 2px; font-size: 1rem; }
+        
+        input { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 12px; font-size: 1.2rem; margin-bottom: 12px; box-sizing: border-box; }
+        button { width: 100%; padding: 16px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; background: var(--green); color: white; margin-bottom: 10px; }
+        
+        #stock-list { margin-top: 15px; max-height: 280px; overflow-y: auto; border: 1px solid #eee; border-radius: 15px; }
+        .stock-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #f9f9f9; font-size: 0.8rem; }
+        .holding-row { background: #f0fff4; border-left: 5px solid var(--green); font-weight: bold; }
+        .section-label { font-size: 0.65rem; color: #999; padding: 10px 12px 5px; font-weight: bold; text-transform: uppercase; background: #fff; position: sticky; top: 0; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <div class="main-card">
+        <small style="opacity: 0.6; letter-spacing: 1px;">TOTAL PORTFOLIO</small>
+        <span id="total-val">$0.00</span>
+        <div id="pnl-display">Profit: +$0.00 (0.00%)</div>
+    </div>
+
+    <div class="stat-grid">
+        <div class="stat-box">Invested Capital<span id="invest-val" class="val" style="color:var(--blue)">$0.00</span></div>
+        <div class="stat-box">Winning Streak<span id="streak-val" class="val" style="color:orange">0 Days</span></div>
+    </div>
+
+    <input type="number" id="userAmt" placeholder="Enter Deposit ($)" inputmode="decimal">
+    <button onclick="invest()">DEPOSIT & START TRADING</button>
+
+    <div id="stock-list"></div>
+</div>
+
+<script>
+    const tickers = ['AAPL','TSLA','NVDA','AMZN','MSFT','GOOGL','META','BRK.B','V','JNJ','WMT','JPM','PG','MA','UNH','HD','DIS','PYPL','BAC','ADBE','NFLX','INTC','CMCSA','XOM','PFE','CSCO','T','VZ','KO','PEP','ABT','MRK','CRM','CVX','WFC','LLY','MCD','COST','NKE','MDT','NEE','TXN','HON','UPS','ORCL','QCOM','MS','BMY','AMGN','SBUX'];
+    
+    let balance = 0, totalInvested = 0, streak = 0;
+    let stockData = {}, currentHoldings = [];
+
+    function updateMarket() {
+        // 1. Update all 50 stocks with new random movements
+        tickers.forEach(s => {
+            let lastP = stockData[s]?.price || (100 + Math.random() * 100);
+            // Boosted the "Winning" bias so the numbers climb faster
+            let change = (Math.random() * 10) - 3.5; 
+            stockData[s] = { price: lastP * (1 + (change/10000)), change: change };
+        });
+
+        // 2. Identify the Top 5
+        let sorted = [...tickers].sort((a, b) => stockData[b].change - stockData[a].change);
+        currentHoldings = sorted.slice(0, 5);
+
+        // 3. APPLY PROFIT TO BALANCE (The Core Fix)
+        if (balance > 0) {
+            let totalGain = 0;
+            currentHoldings.forEach(s => totalGain += (stockData[s].change / 100));
+            let avgGain = totalGain / 5;
+            
+            // We multiply the current balance by the gain percentage
+            balance = balance * (1 + (avgGain / 100)); 
+            
+            if (avgGain > 0) streak++; else streak = 0;
+        }
+
+        updateUI();
+    }
+
+    function invest() {
+        const amt = parseFloat(document.getElementById('userAmt').value);
+        if (amt > 0) {
+            totalInvested += amt;
+            balance += amt;
+            document.getElementById('userAmt').value = '';
+            updateUI();
+        }
+    }
+
+    function updateUI() {
+        document.getElementById('total-val').innerText = '$' + balance.toFixed(2);
+        document.getElementById('invest-val').innerText = '$' + totalInvested.toFixed(2);
+        document.getElementById('streak-val').innerText = streak + ' Updates';
+        
+        let pnl = balance - totalInvested;
+        let pnlPercent = totalInvested > 0 ? (pnl / totalInvested) * 100 : 0;
+        
+        const pnlBox = document.getElementById('pnl-display');
+        pnlBox.innerText = `Profit: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPercent.toFixed(2)}%)`;
+        pnlBox.style.color = pnl >= 0 ? "var(--green)" : "var(--red)";
+
+        const list = document.getElementById('stock-list');
+        list.innerHTML = '<div class="section-label">Top 5 Investments (Active)</div>';
+
+        // Show Active
+        currentHoldings.forEach(s => {
+            list.innerHTML += `
+            <div class="stock-row holding-row">
+                <span>${s}</span>
+                <span style="color:var(--green)">+${stockData[s].change.toFixed(2)}%</span>
+            </div>`;
+        });
+
+        // Show others (scannable)
+        list.innerHTML += '<div class="section-label">Market Tracking (45 Stocks)</div>';
+        tickers.filter(s => !currentHoldings.includes(s)).slice(0, 10).forEach(s => {
+            list.innerHTML += `
+            <div class="stock-row">
+                <span>${s}</span>
+                <span style="color:${stockData[s].change >= 0 ? 'var(--green)' : 'var(--red)'}">${stockData[s].change.toFixed(2)}%</span>
+            </div>`;
+        });
+    }
+
+    // Faster updates (2 seconds) so you can see the profit climb
+    setInterval(updateMarket, 2000); 
+    updateMarket();
+</script>
+</body>
+</html>
