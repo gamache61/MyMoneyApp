@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>InvestPro | Momentum 50</title>
+    <style>
+        :root { --green: #2ecc71; --dark: #1a1a1a; --gray: #f4f4f4; --red: #e74c3c; --gold: #f1c40f; --blue: #3498db; }
+        body { font-family: -apple-system, sans-serif; background: var(--gray); margin: 0; padding: 15px; display: flex; justify-content: center; }
+        .app { width: 100%; max-width: 400px; background: white; border-radius: 30px; padding: 25px; box-sizing: border-box; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .main-card { background: var(--dark); color: white; border-radius: 20px; padding: 25px; text-align: center; margin-bottom: 15px; }
+        #total-val { font-size: 2.8rem; font-weight: 800; color: var(--green); display: block; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-box { background: #f9f9f9; padding: 10px; border-radius: 12px; text-align: center; font-size: 0.7rem; color: #666; }
+        .val { display: block; font-weight: bold; margin-top: 2px; }
+        .holding-chip { display: inline-block; background: var(--blue); color: white; padding: 2px 8px; border-radius: 5px; font-size: 0.7rem; margin: 2px; }
+        input { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 12px; font-size: 1.2rem; margin-bottom: 12px; box-sizing: border-box; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 16px; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; }
+        .btn-dep { background: var(--green); color: white; }
+        .btn-wit { background: #ddd; color: #666; }
+        .stock-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <div class="main-card">
+        <small style="opacity: 0.5;">DIVERSIFIED EQUITY</small>
+        <span id="total-val">$0.00</span>
+        <div id="pnl-display" style="font-size: 0.8rem; font-weight: bold; margin-top: 5px;">Profit: +$0.00</div>
+    </div>
+
+    <div class="stat-grid">
+        <div class="stat-box">Fees Paid<span id="fees-val" class="val" style="color:var(--gold)">$0.00</span></div>
+        <div class="stat-box">Active Slots<span id="slots-val" class="val">0/5</span></div>
+    </div>
+
+    <div id="active-holdings" style="margin-bottom:15px; text-align:center;"></div>
+
+    <input type="number" id="userAmt" placeholder="Deposit ($)" inputmode="decimal">
+    <div class="btn-group">
+        <button class="btn-dep" onclick="invest()">Deposit</button>
+        <button class="btn-wit" onclick="withdraw()">Withdraw</button>
+    </div>
+
+    <div id="stock-list" style="margin-top: 15px; max-height: 200px; overflow-y: auto; border: 1px solid #eee; border-radius: 10px; padding: 5px;"></div>
+    <div id="sync-status" style="font-size: 0.6rem; color: #999; text-align: center; margin-top: 10px;">Simulation Active (50 Tickers)</div>
+</div>
+
+<script>
+    const API_KEY = 'PASTE_YOUR_KEY_HERE';
+    // List of 50 major stocks
+    const tickers = ['AAPL','TSLA','GOOGL','AMZN','MSFT','NVDA','META','BRK.B','V','JNJ','WMT','JPM','PG','MA','UNH','HD','DIS','PYPL','BAC','ADBE','NFLX','INTC','CMCSA','XOM','PFE','CSCO','T','VZ','KO','PEP','ABT','MRK','CRM','CVX','WFC','LLY','MCD','COST','NKE','MDT','NEE','TXN','HON','UPS','ORCL','QCOM','MS','BMY','AMGN','SBUX'];
+    
+    let balance = 0, totalInvested = 0, feesPaid = 0;
+    let stockData = {};
+    let currentHoldings = []; // Will store 5 tickers
+
+    function syncMarket() {
+        // Since API limit is 25 per day, we MUST simulate the 50 stocks to keep it working
+        tickers.forEach(s => {
+            let lastP = stockData[s]?.price || (50 + Math.random() * 500);
+            let dailyC = (Math.random() * 8) - 3.5; // Random swing -3.5% to +4.5%
+            stockData[s] = { price: lastP + (lastP * (dailyC/10000)), change: dailyC };
+        });
+        autoManage();
+        updateUI();
+    }
+
+    function autoManage() {
+        // 1. Sort all 50 stocks by performance
+        let sorted = [...tickers].sort((a, b) => stockData[b].change - stockData[a].change);
+        let top5 = sorted.slice(0, 5);
+
+        // 2. Check for switches (Fees)
+        if (balance > 0) {
+            let needsSwitch = false;
+            top5.forEach(ticker => {
+                if (!currentHoldings.includes(ticker)) needsSwitch = true;
+            });
+
+            if (needsSwitch && currentHoldings.length > 0) {
+                let fee = balance * 0.002; // 0.2% rebalancing fee
+                balance -= fee;
+                feesPaid += fee;
+            }
+            currentHoldings = top5;
+
+            // 3. Apply Growth (Average growth of the top 5)
+            let avgGrowth = 0;
+            currentHoldings.forEach(s => avgGrowth += (stockData[s].change / 1000));
+            balance = balance * (1 + (avgGrowth / 5));
+        }
+    }
+
+    function invest() {
+        const amt = parseFloat(document.getElementById('userAmt').value);
+        if (amt > 0) { totalInvested += amt; balance += amt; document.getElementById('userAmt').value = ''; updateUI(); }
+    }
+
+    function withdraw() {
+        if (balance > 0) {
+            alert(`Withdrawing $${balance.toFixed(2)}.`);
+            balance = 0; totalInvested = 0; feesPaid = 0; currentHoldings = []; updateUI();
+        }
+    }
+
+    function updateUI() {
+        document.getElementById('total-val').innerText = '$' + balance.toFixed(2);
+        document.getElementById('fees-val').innerText = '$' + feesPaid.toFixed(2);
+        document.getElementById('slots-val').innerText = currentHoldings.length + "/5";
+        
+        let pnl = balance - totalInvested;
+        document.getElementById('pnl-display').innerText = `Profit: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+        document.getElementById('pnl-display').style.color = pnl >= 0 ? "var(--green)" : "var(--red)";
+
+        // Show chips for the top 5
+        const chips = document.getElementById('active-holdings');
+        chips.innerHTML = '';
+        currentHoldings.forEach(s => {
+            chips.innerHTML += `<span class="holding-chip">${s}</span>`;
+        });
+
+        const list = document.getElementById('stock-list');
+        list.innerHTML = '';
+        tickers.forEach(s => {
+            let isHolding = currentHoldings.includes(s);
+            list.innerHTML += `<div class="stock-row" style="${isHolding ? 'background:#e8f4fd; font-weight:bold;' : ''}">
+                <span>${s} ${isHolding ? '⭐' : ''}</span>
+                <span style="color:${stockData[s].change >= 0 ? 'var(--green)' : 'var(--red)'}">${stockData[s].change.toFixed(2)}%</span>
+            </div>`;
+        });
+    }
+
+    setInterval(syncMarket, 5000); // Fast updates to see the 50 stocks moving
+    syncMarket();
+</script>
+</body>
+</html>
